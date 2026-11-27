@@ -1,1 +1,9 @@
-services: { }
+services:
+  postgres:
+    image: 'postgres:17-alpine'
+    environment:
+      - 'POSTGRES_DB=belajar_sesi6'
+      - 'POSTGRES_USER=sesi6'
+      - 'POSTGRES_PASSWORD=sesi6'
+    ports:
+      - '5432'

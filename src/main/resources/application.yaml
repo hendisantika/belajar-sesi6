@@ -1,0 +1,85 @@
+spring:
+  application:
+    name: belajar-sesi6
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/belajar_sesi6}
+    username: ${DB_USERNAME:sesi6}
+    password: ${DB_PASSWORD:sesi6}
+    hikari:
+      pool-name: sesi6-pool
+      maximum-pool-size: 10
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        format_sql: true
+        default_batch_fetch_size: 50
+        jdbc:
+          time_zone: UTC
+      # Hibernate Envers: setiap versi entity @Audited disimpan ke tabel *_aud
+      org:
+        hibernate:
+          envers:
+            audit_table_suffix: _aud
+            revision_field_name: rev
+            revision_type_field_name: revtype
+            store_data_at_delete: true
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    baseline-on-migrate: true
+    validate-on-migrate: true
+  mvc:
+    problemdetails:
+      enabled: true
+  docker:
+    compose:
+      lifecycle-management: start-only
+
+server:
+  port: ${SERVER_PORT:8091}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,flyway
+  endpoint:
+    health:
+      show-details: always
+
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+  api-docs:
+    path: /v3/api-docs
+
+app:
+  zone: Asia/Jakarta
+  idempotency:
+    ttl: 24h
+    cleanup-cron: "0 0 * * * *"
+  # Akun demo untuk latihan (HTTP Basic). JANGAN dipakai di produksi.
+  security:
+    users:
+      - username: admin
+        password: admin123
+        roles: [ ADMIN ]
+      - username: accountant1
+        password: accountant123
+        roles: [ ACCOUNTANT ]
+      - username: accountant2
+        password: accountant123
+        roles: [ ACCOUNTANT ]
+      - username: approver1
+        password: approver123
+        roles: [ APPROVER ]
+      - username: auditor1
+        password: auditor123
+        roles: [ AUDITOR ]
+
+logging:
+  level:
+    id.autochem.belajarsesi6: DEBUG
