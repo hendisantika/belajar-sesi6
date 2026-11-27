@@ -26,8 +26,12 @@ public record JournalRequest(
         /* GENERAL (default) atau ADJUSTMENT. REVERSAL hanya dibuat lewat endpoint reverse. */
         JournalType journalType,
         /* Khusus ADJUSTMENT: dibalik otomatis di awal periode berikutnya (mis. akrual). */
-        boolean autoReverse,
+        Boolean autoReverse,
         @NotEmpty @Size(min = 2, message = "jurnal minimal 2 baris") List<@Valid JournalLineRequest> lines) {
+
+    public boolean autoReverseOrDefault() {
+        return Boolean.TRUE.equals(autoReverse);
+    }
 
     public JournalType typeOrDefault() {
         return journalType != null ? journalType : JournalType.GENERAL;

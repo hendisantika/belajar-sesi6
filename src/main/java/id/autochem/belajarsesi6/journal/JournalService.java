@@ -81,7 +81,7 @@ public class JournalService {
         }
         periodGuard.assertOpen(request.journalDate(), type);
         JournalEntry entry = JournalEntry.draft(numberGenerator.next(request.journalDate(), type),
-                request.journalDate(), request.description(), type, request.autoReverse());
+                request.journalDate(), request.description(), type, request.autoReverseOrDefault());
         addLines(entry, request.lines());
         journals.saveAndFlush(entry);
         audit.success(AuditAction.JOURNAL_CREATED, EntityTypes.JOURNAL, entry.getId(), entry.getJournalNumber(),
@@ -98,7 +98,7 @@ public class JournalService {
         // Periode lama DAN periode baru harus masih terbuka
         periodGuard.assertOpen(entry.getJournalDate(), entry.getJournalType());
         periodGuard.assertOpen(request.journalDate(), entry.getJournalType());
-        entry.updateHeader(request.journalDate(), request.description(), request.autoReverse());
+        entry.updateHeader(request.journalDate(), request.description(), request.autoReverseOrDefault());
         entry.clearLines();
         journals.flush();
         addLines(entry, request.lines());
