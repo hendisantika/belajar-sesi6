@@ -1,0 +1,186 @@
+### Sesi 6 - Trial Balance, Period Closing & Audit Trail (IntelliJ HTTP Client / VS Code REST Client)
+### Jalankan berurutan pada database seed yang masih baru ("hari ini" = 27 Nov 2026).
+@host = http://localhost:8091
+
+############################################################ 1. TRIAL BALANCE
+
+### 1a. Neraca saldo Oktober (LOCKED) - total debit = kredit = 108.500.000
+GET {{host}}/api/trial-balance?asOf=2026-10-31
+Authorization: Basic auditor1 auditor123
+
+### 1b. Neraca saldo November - jurnal DRAFT (JV-...-00012) & APPROVED (JV-...-00011) TIDAK ikut
+GET {{host}}/api/trial-balance?asOf=2026-11-30
+Authorization: Basic auditor1 auditor123
+
+### 1c. Worksheet Oktober: sebelum penyesuaian -> penyesuaian -> sesudah penyesuaian
+GET {{host}}/api/trial-balance/periods/2026-10/worksheet
+Authorization: Basic auditor1 auditor123
+
+### 1d. Neraca saldo Oktober dari snapshot saat lock
+GET {{host}}/api/periods/2026-10/trial-balance
+Authorization: Basic auditor1 auditor123
+
+### 1e. Export CSV
+GET {{host}}/api/trial-balance/export?asOf=2026-10-31
+Authorization: Basic auditor1 auditor123
+
+############################################################ 2. PERIOD LOCK MENOLAK POSTING
+
+### 2a. Posting jurnal susulan Oktober -> 422 PERIOD_LOCKED (tercatat REJECTED di audit)
+POST {{host}}/api/journals/5/post
+Authorization: Basic approver1 approver123
+Idempotency-Key: hands-on-post-0005-a
+X-Correlation-Id: hands-on-2a
+
+### 2b. Membuat jurnal baru bertanggal Oktober -> 422 PERIOD_LOCKED
+POST {{host}}/api/journals
+Authorization: Basic accountant1 accountant123
+Content-Type: application/json
+
+{
+  "journalDate": "2026-10-29",
+  "description": "Jurnal mundur ke periode yang sudah ditutup",
+  "lines": [
+    { "accountCode": "5401", "debit": 100000 },
+    { "accountCode": "1101", "credit": 100000 }
+  ]
+}
+
+### 2c. ACCOUNTANT mencoba unlock -> 403 (tercatat DENIED)
+POST {{host}}/api/periods/2026-10/unlock
+Authorization: Basic accountant1 accountant123
+Content-Type: application/json
+
+{ "reason": "Saya ingin memposting jurnal susulan" }
+
+### 2d. Bukti penolakan di audit log
+GET {{host}}/api/audit-events/rejections
+Authorization: Basic auditor1 auditor123
+
+############################################################ 3. ADJUSTMENT SETELAH UNLOCK (guided)
+
+### 3a. Unlock tanpa alasan -> 400
+POST {{host}}/api/periods/2026-10/unlock
+Authorization: Basic admin admin123
+Content-Type: application/json
+
+{}
+
+### 3b. Unlock dengan alasan -> SOFT_CLOSED (hanya ADJUSTMENT/REVERSAL yang boleh masuk)
+POST {{host}}/api/periods/2026-10/unlock
+Authorization: Basic admin admin123
+Content-Type: application/json
+
+{ "reason": "Akrual listrik & air Oktober terlewat (memo CFO-17)" }
+
+### 3c. Jurnal GENERAL tetap ditolak saat SOFT_CLOSED -> 422 PERIOD_CUT_OFF
+POST {{host}}/api/journals/5/post
+Authorization: Basic approver1 approver123
+Idempotency-Key: hands-on-post-0005-b
+
+### 3d. Buat jurnal penyesuaian akrual (auto-reverse) -> id 13, AJ-202610-00013
+POST {{host}}/api/journals
+Authorization: Basic accountant1 accountant123
+Content-Type: application/json
+
+{
+  "journalDate": "2026-10-31",
+  "description": "Akrual tagihan listrik & air Oktober",
+  "journalType": "ADJUSTMENT",
+  "autoReverse": true,
+  "lines": [
+    { "accountCode": "5301", "description": "Beban listrik & air Oktober", "debit": 650000 },
+    { "accountCode": "2102", "description": "Utang biaya listrik", "credit": 650000 }
+  ]
+}
+
+### 3e. Approve (checker berbeda dari maker)
+POST {{host}}/api/journals/13/approve
+Authorization: Basic approver1 approver123
+
+### 3f. Post adjustment
+POST {{host}}/api/journals/13/post
+Authorization: Basic approver1 approver123
+Idempotency-Key: hands-on-post-0013
+
+### 3g. Coba lock -> 422 PERIOD_CHECKLIST_FAILED (JV-202610-00005 masih APPROVED)
+POST {{host}}/api/periods/2026-10/lock
+Authorization: Basic admin admin123
+
+### 3h. Checklist
+GET {{host}}/api/periods/2026-10/closing-checklist
+Authorization: Basic admin admin123
+
+### 3i. Reopen (alasan wajib) agar jurnal susulan bisa diposting
+POST {{host}}/api/periods/2026-10/reopen
+Authorization: Basic admin admin123
+Content-Type: application/json
+
+{ "reason": "Posting jurnal susulan ATK Oktober yang sudah disetujui" }
+
+### 3j. Post jurnal susulan
+POST {{host}}/api/journals/5/post
+Authorization: Basic approver1 approver123
+Idempotency-Key: hands-on-post-0005-c
+
+### 3k. Cut-off lalu lock kembali (snapshot saldo dibuat ulang)
+POST {{host}}/api/periods/2026-10/cut-off
+Authorization: Basic admin admin123
+
+###
+POST {{host}}/api/periods/2026-10/lock
+Authorization: Basic admin admin123
+
+### 3l. Auto-reversal akrual Oktober per 1 November (aman diulang)
+POST {{host}}/api/periods/2026-10/auto-reversals
+Authorization: Basic admin admin123
+
+### 3m. Worksheet Oktober setelah penyesuaian
+GET {{host}}/api/trial-balance/periods/2026-10/worksheet
+Authorization: Basic auditor1 auditor123
+
+############################################################ 4. REVERSAL KOREKSI NOVEMBER
+
+### 4a. JV-202611-00010 tercatat 12.500.000 (seharusnya 1.250.000) -> reversal
+POST {{host}}/api/journals/10/reverse
+Authorization: Basic approver1 approver123
+Idempotency-Key: hands-on-reverse-0010
+Content-Type: application/json
+
+{ "reason": "Nominal salah, seharusnya 1.250.000", "reversalDate": "2026-11-27" }
+
+### 4b. Catat ulang dengan nominal benar
+POST {{host}}/api/journals
+Authorization: Basic accountant2 accountant123
+Content-Type: application/json
+
+{
+  "journalDate": "2026-11-27",
+  "description": "Pendapatan jasa konsultasi CV Sinar (koreksi)",
+  "lines": [
+    { "accountCode": "1102", "debit": 1250000 },
+    { "accountCode": "4201", "credit": 1250000 }
+  ]
+}
+
+############################################################ 5. REKONSILIASI & AUDIT
+
+### 5a. Rekonsiliasi TB -> GL -> jurnal
+GET {{host}}/api/reconciliation?asOf=2026-11-30&includeMatched=true
+Authorization: Basic auditor1 auditor123
+
+### 5b. Telusuri akun Kas: baris TB -> ledger -> jurnal asal -> audit
+GET {{host}}/api/reconciliation/accounts/1101/trace?asOf=2026-11-30
+Authorization: Basic auditor1 auditor123
+
+### 5c. Jejak audit periode Oktober (cut-off, lock, unlock, reopen)
+GET {{host}}/api/audit-events?entityType=ACCOUNTING_PERIOD&entityRef=2026-10
+Authorization: Basic auditor1 auditor123
+
+### 5d. Riwayat versi periode Oktober (Envers)
+GET {{host}}/api/periods/2026-10/revisions
+Authorization: Basic auditor1 auditor123
+
+### 5e. Riwayat versi jurnal susulan (Envers)
+GET {{host}}/api/journals/5/revisions
+Authorization: Basic auditor1 auditor123
